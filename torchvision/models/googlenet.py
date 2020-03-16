@@ -49,7 +49,9 @@ def googlenet(pretrained=False, progress=True, **kwargs):
 
     return GoogLeNet(**kwargs)
 
-
+#inception-v1
+#x -> 7*7conv1+3*3maxpool1 + 1*1conv2+3*3conv3+3*3maxpool2 + 3a + 3b + 3*3maxpool3 + 4a+4b+4c+4d+4e
+# + 2*2maxpool + 5a+5b + adaptiveavgpool + dropout + fc
 class GoogLeNet(nn.Module):
 
     def __init__(self, num_classes=1000, aux_logits=True, transform_input=False, init_weights=True):
@@ -160,7 +162,10 @@ class GoogLeNet(nn.Module):
             return _GoogLeNetOuputs(x, aux2, aux1)
         return x
 
-
+#x -> branch1(1*1conv) ---> cat
+#| -> branch2(1*1conv+3*3conv) --|
+#| -> branch3(1*1conv+3*3conv) --|
+#| -> branch4(3*3maxp+1*1conv) --|
 class Inception(nn.Module):
 
     def __init__(self, in_channels, ch1x1, ch3x3red, ch3x3, ch5x5red, ch5x5, pool_proj):
