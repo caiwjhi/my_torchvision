@@ -15,9 +15,12 @@ model_urls = {
 }
 
 #growth_rate is k, meaning the num of channels output by denselayer
+#x -> bn+relu+1*1conv + bn+relu+3*3conv ->concat
+#|---------------------------------------|
+#bn_size 是控制bottle neck效果程度的，是中间channel大小比最后输出channel大小的比值
 class _DenseLayer(nn.Sequential):
     def __init__(self, num_input_features, growth_rate, bn_size, drop_rate):
-        super(_DenseLayer, self).__init__()#父类nn.Sequential调用init()
+        super(_DenseLayer, self).__init__()#父类nn.Sequential调用init(),即super(),和把参数中的module一个个add_module
         self.add_module('norm1', nn.BatchNorm2d(num_input_features)),
         self.add_module('relu1', nn.ReLU(inplace=True)),
         self.add_module('conv1', nn.Conv2d(num_input_features, bn_size *
@@ -37,16 +40,16 @@ class _DenseLayer(nn.Sequential):
                                      training=self.training)
         return torch.cat([x, new_features], 1)#concat channel 
 
-
+#若干个denselayer 串联起来，没经过一个dense layer,input channel会增加一个growth_rate
 class _DenseBlock(nn.Sequential):
     def __init__(self, num_layers, num_input_features, bn_size, growth_rate, drop_rate):
         super(_DenseBlock, self).__init__()
         for i in range(num_layers):
             layer = _DenseLayer(num_input_features + i * growth_rate, growth_rate,
                                 bn_size, drop_rate)
-            self.add_module('denselayer%d' % (i + 1), layer)
+            self.add_module('denselayer%d' % (i + 1), layer)#把每个sequential加入到字典里
 
-
+#x -> norm+relu+1*1conv+2*2pool 
 class _Transition(nn.Sequential):
     def __init__(self, num_input_features, num_output_features):
         super(_Transition, self).__init__()
@@ -56,7 +59,8 @@ class _Transition(nn.Sequential):
                                           kernel_size=1, stride=1, bias=False))
         self.add_module('pool', nn.AvgPool2d(kernel_size=2, stride=2))
 
-
+#x -> self.features + relu + adaptive_avg_pool + classifier
+#self.features: first conv + 3*(dense block +transition)+dense block + norm5
 class DenseNet(nn.Module):
     r"""Densenet-BC model class, based on
     `"Densely Connected Convolutional Networks" <https://arxiv.org/pdf/1608.06993.pdf>`_
@@ -76,7 +80,7 @@ class DenseNet(nn.Module):
 
         super(DenseNet, self).__init__()
 
-        # First convolution
+        # First convolution,先把初始一些操作放入
         self.features = nn.Sequential(OrderedDict([
             ('conv0', nn.Conv2d(3, num_init_features, kernel_size=7, stride=2,
                                 padding=3, bias=False)),
@@ -87,13 +91,13 @@ class DenseNet(nn.Module):
 
         # Each denseblock
         num_features = num_init_features
-        for i, num_layers in enumerate(block_config):
+        for i, num_layers in enumerate(block_config):#每个dense block和中间层
             block = _DenseBlock(num_layers=num_layers, num_input_features=num_features,
                                 bn_size=bn_size, growth_rate=growth_rate,
                                 drop_rate=drop_rate)
             self.features.add_module('denseblock%d' % (i + 1), block)
             num_features = num_features + num_layers * growth_rate
-            if i != len(block_config) - 1:
+            if i != len(block_config) - 1:#不是最后一个dense block
                 trans = _Transition(num_input_features=num_features,
                                     num_output_features=num_features // 2)
                 self.features.add_module('transition%d' % (i + 1), trans)
