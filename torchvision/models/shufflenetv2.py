@@ -24,14 +24,18 @@ def channel_shuffle(x, groups):
     x = x.view(batchsize, groups,
                channels_per_group, height, width)
 
-    x = torch.transpose(x, 1, 2).contiguous()
+    x = torch.transpose(x, 1, 2).contiguous()#group之间进行了channel shuffle
 
     # flatten
     x = x.view(batchsize, -1, height, width)
 
     return x
 
-
+#if stride==1: out=cat(x1,branch(x2),dim=1), where cat(x1,x2,dim=1)=x
+#else:out=cat(branch1(x),branch2(x),dim=1)
+#branch1:dw(3*3,g=inp=oup),+bn+1*1conv+bn+relu
+#branch2:1*1conv+bn+relu+dw(3*3,g=inp=oup)+bn+1*1conv+bn+relu
+#out = channel_shuffle(out)
 class InvertedResidual(nn.Module):
     def __init__(self, inp, oup, stride):
         super(InvertedResidual, self).__init__()
@@ -70,7 +74,7 @@ class InvertedResidual(nn.Module):
 
     def forward(self, x):
         if self.stride == 1:
-            x1, x2 = x.chunk(2, dim=1)
+            x1, x2 = x.chunk(2, dim=1)#沿着特定维度分块
             out = torch.cat((x1, self.branch2(x2)), dim=1)
         else:
             out = torch.cat((self.branch1(x), self.branch2(x)), dim=1)
@@ -79,7 +83,9 @@ class InvertedResidual(nn.Module):
 
         return out
 
-
+#conv1(3*3,bn,relu)+3*3maxpool+stage2+stage3+stage4+conv5(1*1+bn+relu)+adaptiveavgpool+fc
+#stagei: sequential(InvertedResidual(in,out,stride=2), (repeat-1)*InvertedResidual(out,out,stride=1))
+#可以看出来，还是若干个stage stack,每个stage也是若干个块重复，这些块具有多分支、bottleneck,dw等。
 class ShuffleNetV2(nn.Module):
     def __init__(self, stages_repeats, stages_out_channels, num_classes=1000):
         super(ShuffleNetV2, self).__init__()
