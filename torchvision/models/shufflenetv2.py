@@ -36,6 +36,8 @@ def channel_shuffle(x, groups):
 #branch1:dw(3*3,g=inp=oup),+bn+1*1conv+bn+relu
 #branch2:1*1conv+bn+relu+dw(3*3,g=inp=oup)+bn+1*1conv+bn+relu
 #out = channel_shuffle(out)
+#strid=1时，这个块是channel不变的，因为一开始channel split，branch2也不改变channel，之后在concat起来
+#stride=2时，branch2的输入是x,这有可能改变channel,branch1也是，这都是根据设置channel来的
 class InvertedResidual(nn.Module):
     def __init__(self, inp, oup, stride):
         super(InvertedResidual, self).__init__()
@@ -66,7 +68,7 @@ class InvertedResidual(nn.Module):
             nn.Conv2d(branch_features, branch_features, kernel_size=1, stride=1, padding=0, bias=False),
             nn.BatchNorm2d(branch_features),
             nn.ReLU(inplace=True),
-        )
+        )#设计每个卷积都是in channel=out channel,且group dw和1*1分开，这符合文章提出的原则
 
     @staticmethod
     def depthwise_conv(i, o, kernel_size, stride=1, padding=0, bias=False):
@@ -86,6 +88,7 @@ class InvertedResidual(nn.Module):
 #conv1(3*3,bn,relu)+3*3maxpool+stage2+stage3+stage4+conv5(1*1+bn+relu)+adaptiveavgpool+fc
 #stagei: sequential(InvertedResidual(in,out,stride=2), (repeat-1)*InvertedResidual(out,out,stride=1))
 #可以看出来，还是若干个stage stack,每个stage也是若干个块重复，这些块具有多分支、bottleneck,dw等。
+#每个stage中，都是stride=1开始expand channel，后面若干个stride=2维持channel.
 class ShuffleNetV2(nn.Module):
     def __init__(self, stages_repeats, stages_out_channels, num_classes=1000):
         super(ShuffleNetV2, self).__init__()
